@@ -4779,8 +4779,9 @@ inline Server::Server()
 inline Server::~Server() {}
 
 inline Server &Server::Get(const std::string &pattern, Handler handler) {
-  get_handlers_.push_back(
-      std::make_pair(std::regex(pattern), std::move(handler)));
+  get_handlers_.push_back(std::make_pair(std::regex(), nullptr));
+  get_handlers_.back().first = std::regex(pattern);
+  get_handlers_.back().second = handler;
   return *this;
 }
 
