@@ -311,7 +311,7 @@ struct ci {
 using Headers = std::multimap<std::string, std::string, detail::ci>;
 
 using Params = std::multimap<std::string, std::string>;
-using Match = std::smatch;
+using Match = std::vector<std::string>;
 
 using Progress = std::function<bool(uint64_t current, uint64_t total)>;
 
@@ -4779,13 +4779,15 @@ inline Server::Server()
 
 inline Server::~Server() {}
 
-inline Server &Server::Get(std::string pattern, Handler handler) {
-  get_handlers_.push_back({pattern, handler});
+inline Server &Server::Get(const std::string &pattern, Handler handler) {
+  get_handlers_.push_back(
+      std::make_pair(pattern, std::move(handler)));
   return *this;
 }
 
-inline Server &Server::Post(std::string pattern, Handler handler) {
-  post_handlers_.push_back({pattern, handler});
+inline Server &Server::Post(const std::string &pattern, Handler handler) {
+  post_handlers_.push_back(
+      std::make_pair(pattern, std::move(handler)));
   return *this;
 }
 
@@ -4797,7 +4799,8 @@ inline Server &Server::Post(const std::string &pattern,
 }
 
 inline Server &Server::Put(const std::string &pattern, Handler handler) {
-  put_handlers_.push_back(std::make_pair(pattern, std::move(handler)));
+  put_handlers_.push_back(
+      std::make_pair(pattern, std::move(handler)));
   return *this;
 }
 
@@ -4821,8 +4824,9 @@ inline Server &Server::Patch(const std::string &pattern,
   return *this;
 }
 
-inline Server &Server::Delete(std::string pattern, Handler handler) {
-  del_handlers_.push_back({pattern, handler});
+inline Server &Server::Delete(const std::string &pattern, Handler handler) {
+  delete_handlers_.push_back(
+      std::make_pair(pattern, std::move(handler)));
   return *this;
 }
 
@@ -4834,7 +4838,8 @@ inline Server &Server::Delete(const std::string &pattern,
 }
 
 inline Server &Server::Options(const std::string &pattern, Handler handler) {
-  options_handlers_.push_back(std::make_pair(pattern, std::move(handler)));
+  options_handlers_.push_back(
+      std::make_pair(pattern, std::move(handler)));
   return *this;
 }
 
@@ -5529,20 +5534,52 @@ inline bool Server::routing(Request &req, Response &res, Stream &strm) {
   return false;
 }
 
+inline bool merly_regex_match(std::string path,
+                              std::vector<std::string> &matches,
+                              std::string pattern) {
+  if (path == pattern) {
+    matches.push_back(path);
+    return true;
+  }
+  auto path_parts = merly::split_string(path, "/");
+  auto pattern_parts = merly::split_string(pattern, "/");
+
+  std::vector<std::string> m;
+  m.push_back(path);
+  for (int i = 0; i < path_parts.size(); ++i) {
+    if (i >= pattern_parts.size()) return false;
+    auto path_part = path_parts[i];
+    auto pattern_part = pattern_parts[i];
+    merly::rtrim_ch(pattern_part, '(');
+    if (pattern_part == "(\\w+)") {
+      m.push_back(path_part);
+      continue;
+    }
+    if (pattern_part == ".+)?" || pattern_part == "(.+)") {
+      while (++i < path_parts.size())
+        path_part += "/" + path_parts[i];
+      m.push_back(path_part);
+      break;
+    }
+    if (pattern_part != path_part) return false;
+  }
+  matches = m;
+  return true;
+}
+
 inline bool Server::dispatch_request(Request &req, Response &res,
                                      const Handlers &handlers) {
   for (const auto &x : handlers) {
     const auto &pattern = x.first;
     const auto &handler = x.second;
 
-    std::smatch matches;
-    if (std::regex_match(req.path, matches, std::regex(pattern))) {
-      for (auto m : matches)
-        req.matches.push_back(m);
+    if (merly_regex_match(req.path, req.matches, pattern)) {
       handler(req, res);
       return true;
     }
   }
+  using namespace merly;
+  LOG_INFO(<< "http: routing: " << req.path << ": no match found" << std::endl);
   return false;
 }
 
@@ -5663,10 +5700,7 @@ inline bool Server::dispatch_request_for_content_reader(
     std::regex pattern(x.first);
     const auto &handler = x.second;
 
-    std::smatch matches;
-    if (std::regex_match(req.path, matches, std::regex(pattern))) {
-      for (auto m : matches)
-        req.matches.push_back(m);
+    if (merly_regex_match(req.path, req.matches, pattern)) {
       handler(req, res, content_reader);
       return true;
     }
