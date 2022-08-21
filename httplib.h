@@ -633,14 +633,14 @@ public:
 
   virtual bool is_valid() const;
 
-  Server &Get(std::string pattern, Handler handler);
-  Server &Post(std::string pattern, Handler handler);
+  Server &Get(const std::string &pattern, Handler handler);
+  Server &Post(const std::string &pattern, Handler handler);
   Server &Post(const std::string &pattern, HandlerWithContentReader handler);
   Server &Put(const std::string &pattern, Handler handler);
   Server &Put(const std::string &pattern, HandlerWithContentReader handler);
   Server &Patch(const std::string &pattern, Handler handler);
   Server &Patch(const std::string &pattern, HandlerWithContentReader handler);
-  Server &Delete(std::string pattern, Handler handler);
+  Server &Delete(const std::string &pattern, Handler handler);
   Server &Delete(const std::string &pattern, HandlerWithContentReader handler);
   Server &Options(const std::string &pattern, Handler handler);
 
@@ -770,13 +770,12 @@ private:
   
   Handlers get_handlers_;
   Handlers post_handlers_;
-  Handlers del_handlers_;
-
   HandlersForContentReader post_handlers_for_content_reader_;
   Handlers put_handlers_;
   HandlersForContentReader put_handlers_for_content_reader_;
   Handlers patch_handlers_;
   HandlersForContentReader patch_handlers_for_content_reader_;
+  Handlers delete_handlers_;
   HandlersForContentReader delete_handlers_for_content_reader_;
   Handlers options_handlers_;
   HandlerWithResponse error_handler_;
@@ -5523,7 +5522,7 @@ inline bool Server::routing(Request &req, Response &res, Stream &strm) {
   else if (req.method == "PUT") {
     return dispatch_request(req, res, put_handlers_);
   } else if (req.method == "DELETE") {
-    return dispatch_request(req, res, del_handlers_);
+    return dispatch_request(req, res, delete_handlers_);
   } else if (req.method == "OPTIONS") {
     return dispatch_request(req, res, options_handlers_);
   } else if (req.method == "PATCH") {
@@ -5697,7 +5696,7 @@ inline bool Server::dispatch_request_for_content_reader(
     Request &req, Response &res, ContentReader content_reader,
     const HandlersForContentReader &handlers) {
   for (const auto &x : handlers) {
-    std::regex pattern(x.first);
+    const auto &pattern = x.first;
     const auto &handler = x.second;
 
     if (merly_regex_match(req.path, req.matches, pattern)) {
